@@ -28,11 +28,11 @@ export function FakeLogin() {
             MicroPrelegal
           </p>
           <h1 className="mt-6 max-w-xl text-5xl font-semibold tracking-tight text-[#032147]">
-            Foundation-ready legal drafting, with the product flow kept intact.
+            AI-assisted Mutual NDA drafting inside a simple platform shell.
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-8 text-[#4b607e]">
-            This V1 foundation adds the platform entry flow, backend runtime, and temporary database
-            without changing the NDA drafting experience yet.
+            Enter the current prototype to chat with the assistant, gather Mutual NDA details, and
+            watch the draft update live.
           </p>
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
             <div className="rounded-[1.5rem] border border-[#d8e6f2] bg-white/80 p-5">
@@ -40,7 +40,8 @@ export function FakeLogin() {
                 Frontend
               </p>
               <p className="mt-3 text-sm leading-6 text-[#4b607e]">
-                Fake login entry into the platform with the NDA workspace as the first screen.
+                Fake login entry into the platform with the AI drafting workspace as the first
+                screen.
               </p>
             </div>
             <div className="rounded-[1.5rem] border border-[#d8e6f2] bg-white/80 p-5">
@@ -48,7 +49,8 @@ export function FakeLogin() {
                 Backend
               </p>
               <p className="mt-3 text-sm leading-6 text-[#4b607e]">
-                FastAPI runtime serves the built frontend and a health endpoint from one container.
+                FastAPI now serves the built frontend, health endpoint, and NDA chat API from one
+                container.
               </p>
             </div>
             <div className="rounded-[1.5rem] border border-[#d8e6f2] bg-white/80 p-5">
@@ -56,8 +58,8 @@ export function FakeLogin() {
                 Database
               </p>
               <p className="mt-3 text-sm leading-6 text-[#4b607e]">
-                Temporary SQLite storage resets on every container start and creates the `users`
-                table for later auth work.
+                Temporary SQLite storage still resets on each container start for the current fake
+                auth foundation.
               </p>
             </div>
           </div>
@@ -71,8 +73,8 @@ export function FakeLogin() {
             Enter the platform
           </h2>
           <p className="mt-3 text-sm leading-6 text-[#66758f]">
-            This form does not authenticate. It only creates a temporary frontend session and takes
-            you into the current workspace.
+            This form does not authenticate. It creates a temporary frontend session and takes you
+            into the current AI drafting workspace.
           </p>
 
           <form className="mt-8 space-y-5" onSubmit={handleSubmit}>

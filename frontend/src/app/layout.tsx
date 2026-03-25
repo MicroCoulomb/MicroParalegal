@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MicroPrelegal | Platform Foundation",
-  description: "V1 platform foundation with fake login, FastAPI runtime, and NDA workspace.",
+  title: "MicroPrelegal | Mutual NDA AI Drafting",
+  description: "AI-assisted Mutual NDA drafting with a FastAPI backend and live preview workspace.",
 };
 
 export default function RootLayout({

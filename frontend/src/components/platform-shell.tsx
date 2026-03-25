@@ -28,10 +28,10 @@ export function PlatformShell({
                 MicroPrelegal Platform
               </p>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#032147]">
-                Mutual NDA workspace
+                Mutual NDA drafting workspace
               </h1>
               <p className="mt-2 text-sm leading-6 text-[#5d6b86]">
-                V1 foundation mode: fake login at the edge, current drafting flow inside.
+                Fake login at the edge, AI-assisted Mutual NDA drafting inside.
               </p>
             </div>
             <div className="flex items-center gap-3">

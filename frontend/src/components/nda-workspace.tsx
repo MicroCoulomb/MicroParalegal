@@ -5,60 +5,47 @@ import { jsPDF } from "jspdf";
 import {
   DEFAULT_NDA_FORM,
   type NdaFormValues,
-  buildPreviewDocument,
   buildDownloadFileName,
+  buildPreviewDocument,
 } from "@/lib/nda-template";
 
-type FieldConfig = {
-  name: keyof NdaFormValues;
-  label: string;
-  placeholder?: string;
-  type?: "text" | "date" | "email";
+type ChatMessage = {
+  content: string;
+  role: "assistant" | "user";
 };
 
-const PARTY_FIELDS: FieldConfig[] = [
-  { name: "partyOneCompany", label: "Party 1 company", placeholder: "Northstar Labs, Inc." },
-  { name: "partyOneSigner", label: "Party 1 signer", placeholder: "Avery Stone" },
-  { name: "partyOneTitle", label: "Party 1 title", placeholder: "Chief Executive Officer" },
-  { name: "partyOneAddress", label: "Party 1 notice address", placeholder: "legal@northstarlabs.com" },
-  { name: "partyTwoCompany", label: "Party 2 company", placeholder: "Harbor Peak LLC" },
-  { name: "partyTwoSigner", label: "Party 2 signer", placeholder: "Jordan Lee" },
-  { name: "partyTwoTitle", label: "Party 2 title", placeholder: "Managing Director" },
-  { name: "partyTwoAddress", label: "Party 2 notice address", placeholder: "contracts@harborpeak.co" },
+type ChatTurnResponse = {
+  assistantMessage: string;
+  draft: NdaFormValues;
+  isComplete: boolean;
+  missingFields: string[];
+};
+
+const INITIAL_ASSISTANT_MESSAGE =
+  "I'll draft a Mutual NDA for you. Tell me who the two parties are and what purpose the NDA should cover, and I'll ask follow-up questions as needed.";
+const INITIAL_MISSING_FIELDS = [
+  "Party 1 company",
+  "Party 1 signer",
+  "Party 1 title",
+  "Party 1 notice address",
+  "Party 2 company",
+  "Party 2 signer",
+  "Party 2 title",
+  "Party 2 notice address",
+  "Purpose",
+  "Effective date",
+  "Governing law",
+  "Jurisdiction",
 ];
 
-const AGREEMENT_FIELDS: FieldConfig[] = [
-  { name: "purpose", label: "Purpose", placeholder: "Evaluating a potential strategic partnership." },
-  { name: "effectiveDate", label: "Effective date", type: "date" },
-  { name: "governingLaw", label: "Governing law", placeholder: "California" },
-  {
-    name: "jurisdiction",
-    label: "Jurisdiction",
-    placeholder: "courts located in San Francisco County, California",
-  },
-];
-
-function Field({
-  field,
-  value,
-  onChange,
-}: {
-  field: FieldConfig;
-  value: string;
-  onChange: (name: keyof NdaFormValues, value: string) => void;
-}) {
+function isChatTurnResponse(payload: unknown): payload is ChatTurnResponse {
   return (
-    <label className="flex flex-col gap-2">
-      <span className="text-sm font-medium text-stone-700">{field.label}</span>
-      <input
-        className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-600 focus:ring-4 focus:ring-amber-100"
-        name={field.name}
-        onChange={(event) => onChange(field.name, event.target.value)}
-        placeholder={field.placeholder}
-        type={field.type ?? "text"}
-        value={value}
-      />
-    </label>
+    typeof payload === "object" &&
+    payload !== null &&
+    "assistantMessage" in payload &&
+    "draft" in payload &&
+    "missingFields" in payload &&
+    "isComplete" in payload
   );
 }
 
@@ -208,16 +195,69 @@ function NdaPreviewPaper({ previewDocument }: { previewDocument: ReturnType<type
 }
 
 export function NdaWorkspace() {
-  const [values, setValues] = useState(DEFAULT_NDA_FORM);
+  const [draft, setDraft] = useState(DEFAULT_NDA_FORM);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: "assistant", content: INITIAL_ASSISTANT_MESSAGE },
+  ]);
+  const [composerValue, setComposerValue] = useState("");
+  const [missingFields, setMissingFields] = useState<string[]>(INITIAL_MISSING_FIELDS);
+  const [isComplete, setIsComplete] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const deferredValues = useDeferredValue(values);
-  const previewDocument = buildPreviewDocument(deferredValues);
+  const deferredDraft = useDeferredValue(draft);
+  const previewDocument = buildPreviewDocument(deferredDraft);
 
-  function updateValue(name: keyof NdaFormValues, value: string) {
-    startTransition(() => {
-      setValues((current) => ({ ...current, [name]: value }));
-    });
+  async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const userMessage = composerValue.trim();
+    if (!userMessage || isSending) {
+      return;
+    }
+
+    const previousMessages = messages;
+    const nextMessages: ChatMessage[] = [...previousMessages, { role: "user", content: userMessage }];
+    setComposerValue("");
+    setErrorMessage(null);
+    setMessages(nextMessages);
+    setIsSending(true);
+
+    try {
+      const response = await fetch("/api/nda/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          draft,
+          messages: nextMessages,
+        }),
+      });
+
+      const payload: unknown = await response.json();
+      if (!response.ok || !isChatTurnResponse(payload)) {
+        const detail =
+          typeof payload === "object" && payload !== null && "detail" in payload
+            ? String(payload.detail)
+            : "Unable to generate the next NDA drafting step.";
+        throw new Error(detail);
+      }
+
+      startTransition(() => {
+        setDraft(payload.draft);
+        setMissingFields(payload.missingFields);
+        setIsComplete(payload.isComplete);
+      });
+      setMessages([...nextMessages, { role: "assistant", content: payload.assistantMessage }]);
+    } catch (error) {
+      setMessages(previousMessages);
+      setComposerValue(userMessage);
+      setErrorMessage(error instanceof Error ? error.message : "Unable to generate the next NDA drafting step.");
+    } finally {
+      setIsSending(false);
+    }
   }
 
   async function downloadDocument() {
@@ -244,7 +284,7 @@ export function NdaWorkspace() {
       };
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const pageMargin = 36;
+      const pageMargin = 28;
       const contentWidth = pageWidth - pageMargin * 2;
       const gap = 14;
       const cardRadius = 12;
@@ -287,7 +327,13 @@ export function NdaWorkspace() {
         x: number,
         top: number,
         width: number,
-        options?: { font?: "helvetica" | "times"; style?: "normal" | "bold"; size?: number; color?: keyof typeof palette; lineHeight?: number },
+        options?: {
+          color?: keyof typeof palette;
+          font?: "helvetica" | "times";
+          lineHeight?: number;
+          size?: number;
+          style?: "normal" | "bold";
+        },
       ) => {
         pdf.setFont(options?.font ?? "helvetica", options?.style ?? "normal");
         pdf.setFontSize(options?.size ?? 11);
@@ -306,7 +352,7 @@ export function NdaWorkspace() {
       const measureWrappedTextHeight = (
         text: string,
         width: number,
-        options?: { size?: number; lineHeight?: number },
+        options?: { lineHeight?: number; size?: number },
       ) => {
         const size = options?.size ?? 11;
         const lineHeight = options?.lineHeight ?? size * 1.5;
@@ -335,7 +381,12 @@ export function NdaWorkspace() {
         width: number,
         label: string,
         value: string,
-        options?: { fill?: keyof typeof palette; bodyFont?: "helvetica" | "times"; bodySize?: number; bodyLineHeight?: number },
+        options?: {
+          bodyFont?: "helvetica" | "times";
+          bodyLineHeight?: number;
+          bodySize?: number;
+          fill?: keyof typeof palette;
+        },
       ) => {
         const inner = 16;
         const labelHeight = 12;
@@ -361,40 +412,55 @@ export function NdaWorkspace() {
         pdf.line(pageMargin, top, pageWidth - pageMargin, top);
       };
 
+      const measurePartyCardHeight = (
+        party: ReturnType<typeof buildPreviewDocument>["parties"][number],
+        width: number,
+        padding: number,
+        signatureHeight: number,
+      ) => {
+        const bodyWidth = width - padding * 2;
+        const companyHeight = pdf.splitTextToSize(party.company, bodyWidth).length * 16;
+        const detailHeights = [party.signer, party.title, party.address].reduce(
+          (total, value) =>
+            total + 12 + 2 + measureWrappedTextHeight(value, bodyWidth, { size: 10, lineHeight: 14 }) + 4,
+          0,
+        );
+
+        return padding + 8 + 18 + companyHeight + 4 + detailHeights + signatureHeight * 2 + padding;
+      };
+
       ensureSpace(120);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(9);
       applyTextColor("accent");
       pdf.text("COMMON PAPER PROTOTYPE", pageMargin, y);
-      y += 24;
+      y += 18;
 
       pdf.setFont("times", "bold");
-      pdf.setFontSize(24);
+      pdf.setFontSize(21);
       applyTextColor("text");
       pdf.text("Mutual Non-Disclosure Agreement", pageMargin, y);
-      y += 24;
+      y += 20;
 
       y = drawWrappedText(
         'This Mutual Non-Disclosure Agreement (the "MNDA") consists of this Cover Page and the Common Paper Mutual NDA Standard Terms Version 1.0.',
         pageMargin,
         y,
         Math.min(contentWidth, 360),
-        { color: "subtle", font: "helvetica", lineHeight: 18, size: 10.5 },
+        { color: "subtle", font: "helvetica", lineHeight: 16, size: 10 },
       );
-      y += 18;
+      y += 12;
       drawDivider(y);
-      y += 22;
+      y += 16;
 
       const leftColumnWidth = contentWidth * 0.46;
       const rightColumnWidth = contentWidth - leftColumnWidth - gap;
-      const purposeCardHeight = drawInfoCard(
-        pageMargin,
-        y,
-        leftColumnWidth,
-        "Purpose",
-        previewDocument.purpose,
-        { bodyFont: "times", bodyLineHeight: 20, bodySize: 13, fill: "panel" },
-      ).height;
+      const purposeCardHeight = drawInfoCard(pageMargin, y, leftColumnWidth, "Purpose", previewDocument.purpose, {
+        bodyFont: "times",
+        bodyLineHeight: 18,
+        bodySize: 12,
+        fill: "panel",
+      }).height;
       const rightColumnX = pageMargin + leftColumnWidth + gap;
       const effectiveHeight = drawInfoCard(
         rightColumnX,
@@ -419,9 +485,9 @@ export function NdaWorkspace() {
         "Confidentiality",
         `${previewDocument.confidentialityTermYears} year(s)`,
       ).height;
-      y += Math.max(purposeCardHeight, effectiveHeight + gap + Math.max(termHeight, confidentialityHeight)) + 22;
+      y += Math.max(purposeCardHeight, effectiveHeight + gap + Math.max(termHeight, confidentialityHeight)) + 16;
       drawDivider(y);
-      y += 22;
+      y += 16;
 
       const stackedSections = [
         ["Governing law", previewDocument.governingLaw],
@@ -430,47 +496,37 @@ export function NdaWorkspace() {
       ] as const;
 
       for (const [label, value] of stackedSections) {
-        const blockHeight = 18 + measureWrappedTextHeight(value, contentWidth, { size: 13, lineHeight: 20 }) + 8;
-        ensureSpace(blockHeight + 6);
-        y = drawLabel(label, pageMargin, y + 8);
+        const blockHeight = 16 + measureWrappedTextHeight(value, contentWidth, { size: 12, lineHeight: 18 }) + 4;
+        ensureSpace(blockHeight + 4);
+        y = drawLabel(label, pageMargin, y + 4);
         y = drawWrappedText(value, pageMargin, y + 4, contentWidth, {
           font: "helvetica",
-          lineHeight: 20,
-          size: 13,
+          lineHeight: 18,
+          size: 12,
         });
-        y += 10;
+        y += 6;
       }
       drawDivider(y);
-      y += 24;
+      y += 12;
 
       ensureSpace(40);
       pdf.setFont("times", "bold");
-      pdf.setFontSize(18);
+      pdf.setFontSize(16);
       applyTextColor("text");
       pdf.text("Parties", pageMargin, y);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(9);
       applyTextColor("muted");
       pdf.text("SIGNATURE BLOCK", pageWidth - pageMargin, y, { align: "right" });
-      y += 18;
+      y += 10;
 
       const partyCardWidth = (contentWidth - gap) / 2;
-      const partyCardPadding = 16;
-      const signatureSectionHeight = 48;
-      const partyHeights = previewDocument.parties.map((party) => {
-        const bodyWidth = partyCardWidth - partyCardPadding * 2;
-        return (
-          24 +
-          28 +
-          18 + measureWrappedTextHeight(party.signer, bodyWidth, { size: 11, lineHeight: 16 }) +
-          18 + measureWrappedTextHeight(party.title, bodyWidth, { size: 11, lineHeight: 16 }) +
-          18 + measureWrappedTextHeight(party.address, bodyWidth, { size: 11, lineHeight: 16 }) +
-          signatureSectionHeight +
-          signatureSectionHeight +
-          20
-        );
-      });
-      ensureSpace(Math.max(...partyHeights) + 10);
+      const partyCardPadding = 14;
+      const signatureSectionHeight = 28;
+      const partyHeights = previewDocument.parties.map((party) =>
+        measurePartyCardHeight(party, partyCardWidth, partyCardPadding, signatureSectionHeight),
+      );
+      ensureSpace(Math.max(...partyHeights) + 4);
 
       previewDocument.parties.forEach((party, index) => {
         const x = pageMargin + index * (partyCardWidth + gap);
@@ -482,17 +538,17 @@ export function NdaWorkspace() {
         pdf.setFontSize(9);
         applyTextColor("accent");
         pdf.text(`PARTY ${index + 1}`, x + partyCardPadding, cursor);
-        cursor += 22;
+        cursor += 18;
 
         pdf.setFont("times", "bold");
-        pdf.setFontSize(16);
+        pdf.setFontSize(14);
         applyTextColor("text");
         const companyLines = pdf.splitTextToSize(party.company, partyCardWidth - partyCardPadding * 2);
         for (const line of companyLines) {
           pdf.text(line, x + partyCardPadding, cursor);
-          cursor += 18;
+          cursor += 16;
         }
-        cursor += 8;
+        cursor += 4;
 
         const partyDetails = [
           ["Print name", party.signer],
@@ -502,32 +558,39 @@ export function NdaWorkspace() {
 
         for (const [label, value] of partyDetails) {
           cursor = drawLabel(label, x + partyCardPadding, cursor);
-          cursor = drawWrappedText(value, x + partyCardPadding, cursor + 2, partyCardWidth - partyCardPadding * 2, {
-            lineHeight: 16,
-            size: 11,
-          });
-          cursor += 8;
+          cursor = drawWrappedText(
+            value,
+            x + partyCardPadding,
+            cursor + 2,
+            partyCardWidth - partyCardPadding * 2,
+            {
+              lineHeight: 14,
+              size: 10,
+            },
+          );
+          cursor += 4;
         }
 
         const lineWidth = partyCardWidth - partyCardPadding * 2;
         for (const lineLabel of ["Signature", "Date"]) {
           applyDrawColor("border");
-          pdf.line(x + partyCardPadding, cursor + 10, x + partyCardPadding + lineWidth, cursor + 10);
+          pdf.line(x + partyCardPadding, cursor + 6, x + partyCardPadding + lineWidth, cursor + 6);
           pdf.setFont("helvetica", "bold");
-          pdf.setFontSize(9);
+          pdf.setFontSize(8);
           applyTextColor("muted");
-          pdf.text(lineLabel.toUpperCase(), x + partyCardPadding, cursor + 24);
+          pdf.text(lineLabel.toUpperCase(), x + partyCardPadding, cursor + 16);
           cursor += signatureSectionHeight;
         }
       });
-      y += Math.max(...partyHeights) + 20;
+      y += Math.max(...partyHeights) + 10;
       drawDivider(y);
       y += 26;
 
       for (const [index, section] of previewDocument.standardTerms.entries()) {
         const headingHeight = 20;
         const bodyHeight = section.body.reduce(
-          (total, paragraph) => total + measureWrappedTextHeight(paragraph, contentWidth, { size: 11, lineHeight: 18 }) + 10,
+          (total, paragraph) =>
+            total + measureWrappedTextHeight(paragraph, contentWidth, { size: 11, lineHeight: 18 }) + 10,
           0,
         );
         ensureSpace(headingHeight + bodyHeight + (index === 0 ? 30 : 0));
@@ -562,7 +625,7 @@ export function NdaWorkspace() {
       applyDrawColor("border");
       pdf.line(pageMargin, y, pageWidth - pageMargin, y);
       y += 16;
-      y = drawWrappedText(
+      drawWrappedText(
         "Source basis: Common Paper Mutual Non-Disclosure Agreement Version 1.0 cover page and standard terms, adapted into a fillable PDF export for prototype use.",
         pageMargin,
         y,
@@ -570,7 +633,7 @@ export function NdaWorkspace() {
         { color: "muted", font: "helvetica", lineHeight: 14, size: 9.5 },
       );
 
-      pdf.save(buildDownloadFileName(values));
+      pdf.save(buildDownloadFileName(draft));
     } finally {
       setIsExporting(false);
     }
@@ -578,129 +641,155 @@ export function NdaWorkspace() {
 
   return (
     <section className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-        <section className="rounded-[2rem] border border-stone-200/80 bg-white/90 p-6 shadow-[0_24px_80px_rgba(120,53,15,0.12)] backdrop-blur">
-          <div className="mb-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-700">
-              MicroPrelegal
-            </p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">
-              Mutual NDA creator
-            </h1>
-            <p className="mt-3 text-sm leading-6 text-stone-600">
-              Fill in the agreement details, review the live draft, then download a completed PDF
-              locally.
+      <section className="rounded-[2rem] border border-stone-200/80 bg-white/90 p-6 shadow-[0_24px_80px_rgba(120,53,15,0.12)] backdrop-blur">
+        <div className="mb-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-700">
+            MicroPrelegal
+          </p>
+          <div className="mt-3 flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-4xl font-semibold tracking-tight text-stone-950">
+                Mutual NDA AI chat
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-stone-600">
+                Describe the deal in plain language. The assistant will gather the details and keep
+                the draft current as you respond.
+              </p>
+            </div>
+            <div
+              className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
+                isComplete ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {isComplete ? "Ready" : "In progress"}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[1.5rem] border border-stone-200 bg-stone-50 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Drafting conversation
+            </h2>
+            <p className="text-xs text-stone-500">
+              {isSending ? "Assistant is drafting..." : `${messages.length} messages`}
             </p>
           </div>
 
-          <div className="space-y-8">
-            <div>
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Agreement details
-              </h2>
-              <div className="grid gap-4">
-                {AGREEMENT_FIELDS.map((field) => (
-                  <Field
-                    key={field.name}
-                    field={field}
-                    onChange={updateValue}
-                    value={values[field.name]}
-                  />
-                ))}
-              </div>
-            </div>
+          <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+            {messages.map((message, index) => (
+              <article
+                key={`${message.role}-${index}`}
+                className={`rounded-[1.5rem] px-4 py-3 text-sm leading-6 shadow-sm ${
+                  message.role === "assistant"
+                    ? "mr-6 border border-stone-200 bg-white text-stone-700"
+                    : "ml-6 bg-[#032147] text-white"
+                }`}
+              >
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] opacity-70">
+                  {message.role === "assistant" ? "Assistant" : "You"}
+                </p>
+                <p>{message.content}</p>
+              </article>
+            ))}
+          </div>
 
-            <div>
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Parties
-              </h2>
-              <div className="grid gap-4">
-                {PARTY_FIELDS.map((field) => (
-                  <Field
-                    key={field.name}
-                    field={field}
-                    onChange={updateValue}
-                    value={values[field.name]}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-stone-700">MNDA term (years)</span>
-                <input
-                  className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-600 focus:ring-4 focus:ring-amber-100"
-                  min="1"
-                  onChange={(event) => updateValue("ndaTermYears", event.target.value)}
-                  type="number"
-                  value={values.ndaTermYears}
-                />
-              </label>
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-stone-700">
-                  Confidentiality term (years)
-                </span>
-                <input
-                  className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-600 focus:ring-4 focus:ring-amber-100"
-                  min="1"
-                  onChange={(event) => updateValue("confidentialityTermYears", event.target.value)}
-                  type="number"
-                  value={values.confidentialityTermYears}
-                />
-              </label>
-            </div>
-
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-stone-700">MNDA modifications</span>
+          <form className="mt-4 space-y-3" onSubmit={sendMessage}>
+            <label className="block">
+              <span className="sr-only">Message</span>
               <textarea
-                className="min-h-28 rounded-[1.5rem] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-600 focus:ring-4 focus:ring-amber-100"
-                onChange={(event) => updateValue("modifications", event.target.value)}
-                placeholder="Optional business-specific modifications."
-                value={values.modifications}
+                className="min-h-28 w-full rounded-[1.5rem] border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-600 focus:ring-4 focus:ring-amber-100"
+                disabled={isSending}
+                onChange={(event) => setComposerValue(event.target.value)}
+                placeholder="Example: Party 1 is Northstar Labs, signed by Avery Stone, and Party 2 is Harbor Peak LLC."
+                value={composerValue}
               />
             </label>
-          </div>
 
-          <div className="mt-8 flex items-center justify-between gap-4 rounded-[1.5rem] bg-stone-900 px-5 py-4 text-stone-50">
+            {errorMessage ? (
+              <p className="rounded-[1.25rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {errorMessage}
+              </p>
+            ) : null}
+
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-xs leading-5 text-stone-500">
+                {isPending
+                  ? "Refreshing preview..."
+                  : isSending
+                    ? "Waiting for the next drafting question..."
+                    : "The preview updates after each assistant turn."}
+              </p>
+              <button
+                className="rounded-full bg-[#753991] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#62307a] disabled:cursor-not-allowed disabled:bg-[#9f7bb4]"
+                disabled={isSending || !composerValue.trim()}
+                type="submit"
+              >
+                {isSending ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div className="mt-6 rounded-[1.5rem] border border-stone-200 bg-white p-5">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium">Download completed draft</p>
-              <p className="text-xs text-stone-300">
-                {isExporting
-                  ? "Formatting PDF..."
-                  : isPending
-                    ? "Refreshing preview..."
-                    : "Preview is up to date."}
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-stone-500">
+                Draft status
+              </h2>
+              <p className="mt-2 text-sm text-stone-600">
+                {isComplete
+                  ? "All required Mutual NDA fields are present."
+                  : "The assistant still needs the items below to complete the draft."}
               </p>
             </div>
             <button
-              className="rounded-full bg-amber-400 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-300"
+              className="rounded-full bg-amber-400 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+              disabled={isExporting}
               onClick={downloadDocument}
               type="button"
-              disabled={isExporting}
             >
               {isExporting ? "Preparing..." : "Download PDF"}
             </button>
           </div>
-        </section>
 
-        <section className="overflow-hidden rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,_#f7f3ec_0%,_#efe6d8_100%)] shadow-[0_24px_80px_rgba(120,53,15,0.12)]">
-          <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
-                Live draft
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-stone-900">
-                Mutual Non-Disclosure Agreement
-              </h2>
-            </div>
-            <div className="rounded-full border border-stone-300 bg-white/80 px-3 py-1 text-xs text-stone-600">
-              Paper preview
-            </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {missingFields.length > 0 ? (
+              missingFields.map((field) => (
+                <span
+                  key={field}
+                  className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+                >
+                  {field}
+                </span>
+              ))
+            ) : (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                Draft complete
+              </span>
+            )}
           </div>
-          <div className="max-h-[calc(100vh-5rem)] overflow-y-auto p-6">
-            <NdaPreviewPaper previewDocument={previewDocument} />
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,_#f7f3ec_0%,_#efe6d8_100%)] shadow-[0_24px_80px_rgba(120,53,15,0.12)]">
+        <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
+              Live draft
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-stone-900">
+              Mutual Non-Disclosure Agreement
+            </h2>
           </div>
-        </section>
+          <div className="rounded-full border border-stone-300 bg-white/80 px-3 py-1 text-xs text-stone-600">
+            Paper preview
+          </div>
+        </div>
+        <div className="max-h-[calc(100vh-5rem)] overflow-y-auto p-6">
+          <NdaPreviewPaper previewDocument={previewDocument} />
+        </div>
+      </section>
     </section>
   );
 }
