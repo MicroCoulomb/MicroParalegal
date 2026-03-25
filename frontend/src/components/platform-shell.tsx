@@ -20,7 +20,7 @@ export function PlatformShell({
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,_#f3f8ff_0%,_#f9f2ff_34%,_#fff8eb_100%)] px-4 py-6 text-[#032147] sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+      <div className="mx-auto flex max-w-[96rem] flex-col gap-6">
         <header className="rounded-[2rem] border border-white/70 bg-[linear-gradient(135deg,_rgba(255,255,255,0.94),_rgba(244,249,255,0.92))] px-6 py-5 shadow-[0_24px_70px_rgba(3,33,71,0.12)]">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -28,10 +28,10 @@ export function PlatformShell({
                 MicroPrelegal Platform
               </p>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#032147]">
-                Mutual NDA drafting workspace
+                Legal drafting workspace
               </h1>
               <p className="mt-2 text-sm leading-6 text-[#5d6b86]">
-                Fake login at the edge, AI-assisted Mutual NDA drafting inside.
+                Fake login at the edge, AI-assisted drafting across the supported catalog inside.
               </p>
             </div>
             <div className="flex items-center gap-3">

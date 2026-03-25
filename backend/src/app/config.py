@@ -13,7 +13,7 @@ REPO_ROOT = BASE_DIR.parent
 DATA_DIR = BASE_DIR / "data"
 DATABASE_PATH = DATA_DIR / "microprelegal.db"
 FRONTEND_DIST_DIR = BASE_DIR / "static"
-MODEL_NAME = "gpt-5-mini"
+MODEL_NAME = "gpt-4.1-mini"
 MODEL_REASONING_EFFORT = "low"
 MODEL_EXTRA_BODY = {"provider": {"order": ["cerebras"]}}
 

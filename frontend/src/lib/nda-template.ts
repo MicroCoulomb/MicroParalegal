@@ -41,27 +41,22 @@ export type NdaPreviewDocument = {
 };
 
 export const DEFAULT_NDA_FORM: NdaFormValues = {
-  confidentialityTermYears: "1",
-  effectiveDate: new Date().toISOString().slice(0, 10),
-  governingLaw: "California",
-  jurisdiction: "courts located in San Francisco County, California",
-  modifications: "None.",
-  ndaTermYears: "1",
-  partyOneAddress: "legal@northstarlabs.com",
-  partyOneCompany: "Northstar Labs, Inc.",
-  partyOneSigner: "Avery Stone",
-  partyOneTitle: "Chief Executive Officer",
-  partyTwoAddress: "contracts@harborpeak.co",
-  partyTwoCompany: "Harbor Peak LLC",
-  partyTwoSigner: "Jordan Lee",
-  partyTwoTitle: "Managing Director",
-  purpose: "Evaluating whether to enter into a strategic business relationship.",
+  confidentialityTermYears: "",
+  effectiveDate: "",
+  governingLaw: "",
+  jurisdiction: "",
+  modifications: "",
+  ndaTermYears: "",
+  partyOneAddress: "",
+  partyOneCompany: "",
+  partyOneSigner: "",
+  partyOneTitle: "",
+  partyTwoAddress: "",
+  partyTwoCompany: "",
+  partyTwoSigner: "",
+  partyTwoTitle: "",
+  purpose: "",
 };
-
-function normalizeNumber(value: string, fallback: string) {
-  const numeric = Number.parseInt(value, 10);
-  return Number.isFinite(numeric) && numeric > 0 ? String(numeric) : fallback;
-}
 
 function formatDate(value: string) {
   if (!value) {
@@ -84,6 +79,10 @@ function sanitizeValue(value: string, fallback: string) {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
+function formatTermDisplay(value: string) {
+  return value.startsWith("[") ? value : `${value} year(s)`;
+}
+
 export function buildDownloadFileName(values: NdaFormValues) {
   const left = sanitizeValue(values.partyOneCompany, "party-one")
     .toLowerCase()
@@ -98,19 +97,19 @@ export function buildDownloadFileName(values: NdaFormValues) {
 }
 
 export function buildPreviewDocument(values: NdaFormValues): NdaPreviewDocument {
-  const ndaTermYears = normalizeNumber(values.ndaTermYears, "1");
-  const confidentialityTermYears = normalizeNumber(values.confidentialityTermYears, "1");
+  const ndaTermYears = sanitizeValue(values.ndaTermYears, "[MNDA term]");
+  const confidentialityTermYears = sanitizeValue(
+    values.confidentialityTermYears,
+    "[Confidentiality term]",
+  );
   const effectiveDate = formatDate(values.effectiveDate);
   const purpose = sanitizeValue(
     values.purpose,
-    "Evaluating whether to enter into a business relationship with the other party.",
+    "[Purpose]",
   );
-  const governingLaw = sanitizeValue(values.governingLaw, "California");
-  const jurisdiction = sanitizeValue(
-    values.jurisdiction,
-    "courts located in San Francisco County, California",
-  );
-  const modifications = sanitizeValue(values.modifications, "None.");
+  const governingLaw = sanitizeValue(values.governingLaw, "[Governing law]");
+  const jurisdiction = sanitizeValue(values.jurisdiction, "[Jurisdiction]");
+  const modifications = sanitizeValue(values.modifications, "[No modifications specified]");
 
   return {
     confidentialityTermYears,
@@ -227,10 +226,10 @@ ${document.purpose}
 ${document.effectiveDate}
 
 ### MNDA Term
-- Expires ${document.ndaTermYears} year(s) from Effective Date.
+- Expires ${formatTermDisplay(document.ndaTermYears)} from Effective Date.
 
 ### Term of Confidentiality
-- ${document.confidentialityTermYears} year(s) from Effective Date, but in the case of trade secrets until Confidential Information is no longer considered a trade secret under applicable laws.
+- ${formatTermDisplay(document.confidentialityTermYears)} from Effective Date, but in the case of trade secrets until Confidential Information is no longer considered a trade secret under applicable laws.
 
 ### Governing Law & Jurisdiction
 Governing Law: ${document.governingLaw}

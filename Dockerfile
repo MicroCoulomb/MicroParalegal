@@ -17,6 +17,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.7.2 /uv /uvx /bin/
 COPY backend/pyproject.toml ./backend/pyproject.toml
 COPY backend/uv.lock ./backend/uv.lock
 COPY backend/src ./backend/src
+COPY catalog.json ./catalog.json
+COPY templates ./templates
 RUN uv sync --project ./backend --no-dev --frozen
 
 COPY --from=frontend-builder /app/frontend/out ./backend/static

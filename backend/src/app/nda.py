@@ -33,12 +33,12 @@ class ChatMessage(CamelModel):
 class NdaDraft(CamelModel):
     """Structured Mutual NDA draft values."""
 
-    confidentiality_term_years: str = "1"
+    confidentiality_term_years: str = ""
     effective_date: str = ""
-    governing_law: str = "California"
-    jurisdiction: str = "courts located in San Francisco County, California"
-    modifications: str = "None."
-    nda_term_years: str = "1"
+    governing_law: str = ""
+    jurisdiction: str = ""
+    modifications: str = ""
+    nda_term_years: str = ""
     party_one_address: str = ""
     party_one_company: str = ""
     party_one_signer: str = ""

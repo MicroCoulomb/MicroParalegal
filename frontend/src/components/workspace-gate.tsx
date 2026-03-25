@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { NdaWorkspace } from "@/components/nda-workspace";
+import { DocumentWorkspace } from "@/components/document-workspace";
 import { PlatformShell } from "@/components/platform-shell";
 import { readSession, type FakeSession } from "@/lib/session";
 
@@ -36,7 +36,7 @@ export function WorkspaceGate() {
 
   return (
     <PlatformShell session={session}>
-      <NdaWorkspace />
+      <DocumentWorkspace />
     </PlatformShell>
   );
 }
