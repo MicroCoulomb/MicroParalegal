@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -11,15 +12,17 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import FRONTEND_DIST_DIR
 from app.db import reset_database
-from app.nda import NdaChatRequest, NdaChatResponse, get_missing_fields
-from app.nda_chat import LiteLlmNdaChatService
+from app.drafting import DraftingChatRequest, DraftingChatResponse
+from app.drafting_chat import LiteLlmDraftingChatService
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Initialize application state on startup."""
     reset_database()
-    application.state.nda_chat_service = LiteLlmNdaChatService()
+    application.state.drafting_chat_service = LiteLlmDraftingChatService()
     yield
 
 
@@ -32,24 +35,20 @@ async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/nda/chat")
-async def nda_chat(request: NdaChatRequest) -> NdaChatResponse:
-    """Run one Mutual NDA chat turn and return the updated draft."""
+@app.post("/api/drafting/chat")
+async def drafting_chat(request: DraftingChatRequest) -> DraftingChatResponse:
+    """Run one generic drafting chat turn and return the updated draft."""
 
     try:
-        result = app.state.nda_chat_service.generate_reply(request.messages, request.draft)
+        result = app.state.drafting_chat_service.generate_reply(request.messages, request.state)
     except RuntimeError as exc:
+        logger.exception("Drafting chat runtime failure.")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Failed to generate NDA chat response.") from exc
+        logger.exception("Drafting chat request failed.")
+        raise HTTPException(status_code=502, detail="Failed to generate drafting chat response.") from exc
 
-    missing_fields = get_missing_fields(result.draft)
-    return NdaChatResponse(
-        assistant_message=result.assistant_message,
-        draft=result.draft,
-        missing_fields=missing_fields,
-        is_complete=not missing_fields,
-    )
+    return result
 
 
 if (FRONTEND_DIST_DIR / "_next").exists():

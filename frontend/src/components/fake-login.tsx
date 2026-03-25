@@ -28,11 +28,11 @@ export function FakeLogin() {
             MicroPrelegal
           </p>
           <h1 className="mt-6 max-w-xl text-5xl font-semibold tracking-tight text-[#032147]">
-            AI-assisted Mutual NDA drafting inside a simple platform shell.
+            AI-assisted legal drafting across the supported Common Paper catalog.
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-8 text-[#4b607e]">
-            Enter the current prototype to chat with the assistant, gather Mutual NDA details, and
-            watch the draft update live.
+            Enter the current prototype to chat with the assistant, match your request to a
+            supported agreement, and watch the draft update live.
           </p>
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
             <div className="rounded-[1.5rem] border border-[#d8e6f2] bg-white/80 p-5">
@@ -49,8 +49,8 @@ export function FakeLogin() {
                 Backend
               </p>
               <p className="mt-3 text-sm leading-6 text-[#4b607e]">
-                FastAPI now serves the built frontend, health endpoint, and NDA chat API from one
-                container.
+                FastAPI now serves the built frontend, health endpoint, and generic drafting chat
+                API from one container.
               </p>
             </div>
             <div className="rounded-[1.5rem] border border-[#d8e6f2] bg-white/80 p-5">

@@ -24,12 +24,10 @@ Rules:
 - Use the provided current draft as the source of truth for already-known values.
 - Update only fields supported by the schema.
 - Preserve existing values unless the user clearly changes them.
-- Ask concise follow-up questions for any required field that is still missing.
+- Do not assume or invent any user-specific information that the user has not explicitly provided.
+- Ask concise follow-up questions for every required field that is still missing.
 - If the user gives multiple values in one message, capture all of them.
-- Keep defaults unless the user overrides them:
-  - nda_term_years = "1"
-  - confidentiality_term_years = "1"
-  - modifications = "None."
+- If a field is blank and the user has not supplied it, leave it blank in the draft.
 - Effective dates must be returned in YYYY-MM-DD format when the user gives a clear calendar date.
 - Return a complete draft snapshot, not a partial patch.
 """
@@ -74,7 +72,6 @@ class LiteLlmNdaChatService:
             "model": MODEL_NAME,
             "messages": payload,
             "response_format": NdaChatTurnResult,
-            "reasoning_effort": MODEL_REASONING_EFFORT,
         }
         if use_provider_routing:
             request_kwargs["extra_body"] = MODEL_EXTRA_BODY
@@ -82,6 +79,10 @@ class LiteLlmNdaChatService:
         try:
             return completion(**request_kwargs)
         except BadRequestError as exc:
-            if use_provider_routing and "Unknown parameter: 'provider'" in str(exc):
+            error_text = str(exc)
+            if use_provider_routing and (
+                "Unknown parameter: 'provider'" in error_text
+                or "Unrecognized request argument supplied: provider" in error_text
+            ):
                 return self._create_completion(payload, use_provider_routing=False)
             raise

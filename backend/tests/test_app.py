@@ -2,34 +2,35 @@ import sqlite3
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-import pytest
 
 from app.config import DATABASE_PATH
+from app.documents import load_supported_documents
+from app.drafting import (
+    ChatMessage,
+    DocumentSelectionDecision,
+    DraftingChatResponse,
+    DraftingState,
+    DraftingTurnResult,
+)
+from app.drafting_chat import LiteLlmDraftingChatService
 from app.main import app
-from app.nda import ChatMessage, NdaChatTurnResult, NdaDraft, get_missing_fields
-from app.nda_chat import LiteLlmNdaChatService
 
 
-class StubChatService:
-    def generate_reply(self, messages, draft):
-        updated_draft = draft.model_copy(
-            update={
-                "party_one_company": "Northstar Labs, Inc.",
-                "party_one_signer": "Avery Stone",
-                "party_one_title": "Chief Executive Officer",
-                "party_one_address": "legal@northstarlabs.com",
-                "party_two_company": "Harbor Peak LLC",
-                "party_two_signer": "Jordan Lee",
-                "party_two_title": "Managing Director",
-                "party_two_address": "contracts@harborpeak.co",
-                "purpose": "Evaluating a strategic partnership.",
-                "effective_date": "2026-03-25",
-            }
-        )
-        assert messages[-1].content == "We are evaluating a partnership."
-        return NdaChatTurnResult(
-            assistant_message="What governing law and jurisdiction should the agreement use?",
-            draft=updated_draft,
+class StubDraftingService:
+    def generate_reply(self, messages, state):
+        assert messages[-1].content == "I need a pilot agreement for a 60-day trial."
+        assert state.selected_document_filename is None
+        return DraftingChatResponse(
+            assistant_message="What product is being piloted and who are the provider and customer?",
+            selected_document={
+                "name": "Pilot Agreement",
+                "description": "Common Paper standard pilot agreement.",
+                "filename": "pilot-agreement.md",
+            },
+            suggested_document=None,
+            preview_content="# Pilot Agreement\n\n## Parties\nProvider: [Provider]\nCustomer: [Customer]",
+            is_complete=False,
+            status_note="Pilot Agreement selected. More commercial details are needed.",
         )
 
 
@@ -69,37 +70,33 @@ def test_workspace_route_falls_back_to_frontend_html_when_static_build_exists(tm
     assert "workspace shell" in response.text
 
 
-def test_nda_chat_returns_updated_draft_and_missing_fields():
+def test_catalog_loader_returns_supported_documents():
+    documents = load_supported_documents()
+
+    assert len(documents) == 12
+    assert any(document.filename == "mutual-nda.md" for document in documents)
+    assert any(document.filename == "pilot-agreement.md" for document in documents)
+
+
+def test_drafting_chat_returns_selected_document_preview():
     with TestClient(app) as client:
-        client.app.state.nda_chat_service = StubChatService()
+        client.app.state.drafting_chat_service = StubDraftingService()
         response = client.post(
-            "/api/nda/chat",
+            "/api/drafting/chat",
             json={
-                "draft": {
-                    "partyOneCompany": "",
-                    "partyOneSigner": "",
-                    "partyOneTitle": "",
-                    "partyOneAddress": "",
-                    "partyTwoCompany": "",
-                    "partyTwoSigner": "",
-                    "partyTwoTitle": "",
-                    "partyTwoAddress": "",
-                    "purpose": "",
-                    "effectiveDate": "",
-                    "governingLaw": "California",
-                    "jurisdiction": "courts located in San Francisco County, California",
-                    "ndaTermYears": "1",
-                    "confidentialityTermYears": "1",
-                    "modifications": "None.",
+                "state": {
+                    "selectedDocumentFilename": None,
+                    "suggestedDocumentFilename": None,
+                    "previewContent": "",
                 },
                 "messages": [
                     {
                         "role": "assistant",
-                        "content": "Tell me who the parties are and what the NDA is for.",
+                        "content": "Tell me what legal document you need.",
                     },
                     {
                         "role": "user",
-                        "content": "We are evaluating a partnership.",
+                        "content": "I need a pilot agreement for a 60-day trial.",
                     },
                 ],
             },
@@ -107,57 +104,34 @@ def test_nda_chat_returns_updated_draft_and_missing_fields():
 
     assert response.status_code == 200
     assert response.json() == {
-        "assistantMessage": "What governing law and jurisdiction should the agreement use?",
-        "draft": {
-            "partyOneCompany": "Northstar Labs, Inc.",
-            "partyOneSigner": "Avery Stone",
-            "partyOneTitle": "Chief Executive Officer",
-            "partyOneAddress": "legal@northstarlabs.com",
-            "partyTwoCompany": "Harbor Peak LLC",
-            "partyTwoSigner": "Jordan Lee",
-            "partyTwoTitle": "Managing Director",
-            "partyTwoAddress": "contracts@harborpeak.co",
-            "purpose": "Evaluating a strategic partnership.",
-            "effectiveDate": "2026-03-25",
-            "governingLaw": "California",
-            "jurisdiction": "courts located in San Francisco County, California",
-            "ndaTermYears": "1",
-            "confidentialityTermYears": "1",
-            "modifications": "None.",
+        "assistantMessage": "What product is being piloted and who are the provider and customer?",
+        "selectedDocument": {
+            "name": "Pilot Agreement",
+            "description": "Common Paper standard pilot agreement.",
+            "filename": "pilot-agreement.md",
         },
-        "missingFields": [],
-        "isComplete": True,
+        "suggestedDocument": None,
+        "previewContent": "# Pilot Agreement\n\n## Parties\nProvider: [Provider]\nCustomer: [Customer]",
+        "isComplete": False,
+        "statusNote": "Pilot Agreement selected. More commercial details are needed.",
     }
 
 
-def test_nda_chat_rejects_invalid_payload():
+def test_drafting_chat_rejects_invalid_payload():
     with TestClient(app) as client:
         response = client.post(
-            "/api/nda/chat",
+            "/api/drafting/chat",
             json={
-                "draft": DEFAULT_DRAFT_PAYLOAD,
+                "state": {
+                    "selectedDocumentFilename": None,
+                    "suggestedDocumentFilename": None,
+                    "previewContent": "",
+                },
                 "messages": [{"role": "system", "content": "invalid"}],
             },
         )
 
     assert response.status_code == 422
-
-
-def test_get_missing_fields_lists_required_labels():
-    draft = NdaDraft()
-
-    assert get_missing_fields(draft) == [
-        "Party 1 company",
-        "Party 1 signer",
-        "Party 1 title",
-        "Party 1 notice address",
-        "Party 2 company",
-        "Party 2 signer",
-        "Party 2 title",
-        "Party 2 notice address",
-        "Purpose",
-        "Effective date",
-    ]
 
 
 def test_litellm_service_retries_without_provider_when_api_rejects_it(monkeypatch):
@@ -174,47 +148,44 @@ def test_litellm_service_retries_without_provider_when_api_rejects_it(monkeypatc
             choices=[
                 SimpleNamespace(
                     message=SimpleNamespace(
-                        content=NdaChatTurnResult(
-                            assistant_message="What governing law should apply?",
-                            draft=NdaDraft(purpose="Evaluating a partnership."),
+                        content=DraftingTurnResult(
+                            assistant_message="What is the subscription period?",
+                            preview_content="# Cloud Service Agreement\n\nCustomer: [Customer]",
+                            is_complete=False,
+                            status_note="Cloud Service Agreement selected. Commercial terms are still missing.",
                         ).model_dump_json(by_alias=True)
                     )
                 )
             ]
         )
 
-    monkeypatch.setattr("app.nda_chat.completion", fake_completion)
-    monkeypatch.setattr("app.nda_chat.BadRequestError", FakeBadRequestError)
-
-    service = LiteLlmNdaChatService()
-    result = service.generate_reply(
-        [
-            ChatMessage(role="assistant", content="Tell me about the NDA."),
-            ChatMessage(role="user", content="It is for evaluating a partnership."),
-        ],
-        NdaDraft(),
+    monkeypatch.setattr("app.drafting_chat.completion", fake_completion)
+    monkeypatch.setattr("app.drafting_chat.BadRequestError", FakeBadRequestError)
+    monkeypatch.setattr(
+        LiteLlmDraftingChatService,
+        "_select_document",
+        lambda self, messages, state, documents: DocumentSelectionDecision(
+            assistant_message="What is the subscription period?",
+            selected_document_filename="cloud-service-agreement.md",
+            suggested_document_filename=None,
+            should_wait_for_confirmation=False,
+            status_note="Cloud Service Agreement selected.",
+        ),
     )
 
-    assert result.assistant_message == "What governing law should apply?"
+    service = LiteLlmDraftingChatService()
+    result = service.generate_reply(
+        [
+            ChatMessage(role="assistant", content="Tell me what document you need."),
+            ChatMessage(role="user", content="I need a cloud service agreement."),
+        ],
+        DraftingState(selected_document_filename="cloud-service-agreement.md"),
+    )
+
+    assert result.assistant_message == "What is the subscription period?"
+    assert result.selected_document is not None
+    assert result.selected_document.filename == "cloud-service-agreement.md"
+    assert result.preview_content.startswith("# Cloud Service Agreement")
     assert len(calls) == 2
     assert calls[0]["extra_body"] == {"provider": {"order": ["cerebras"]}}
     assert "extra_body" not in calls[1]
-
-
-DEFAULT_DRAFT_PAYLOAD = {
-    "partyOneCompany": "",
-    "partyOneSigner": "",
-    "partyOneTitle": "",
-    "partyOneAddress": "",
-    "partyTwoCompany": "",
-    "partyTwoSigner": "",
-    "partyTwoTitle": "",
-    "partyTwoAddress": "",
-    "purpose": "",
-    "effectiveDate": "",
-    "governingLaw": "California",
-    "jurisdiction": "courts located in San Francisco County, California",
-    "ndaTermYears": "1",
-    "confidentialityTermYears": "1",
-    "modifications": "None.",
-}

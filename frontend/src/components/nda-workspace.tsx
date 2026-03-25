@@ -49,9 +49,13 @@ function isChatTurnResponse(payload: unknown): payload is ChatTurnResponse {
   );
 }
 
+function formatTermValue(value: string) {
+  return value.startsWith("[") ? value : `${value} year(s)`;
+}
+
 function NdaPreviewPaper({ previewDocument }: { previewDocument: ReturnType<typeof buildPreviewDocument> }) {
   return (
-    <article className="mx-auto max-w-4xl rounded-[1.75rem] border border-[#e7e5e4] bg-white px-8 py-10 text-[#1c1917] shadow-[0_28px_60px_rgba(28,25,23,0.08)] sm:px-12">
+    <article className="mx-auto w-full max-w-5xl rounded-[1.75rem] border border-[#e7e5e4] bg-white px-8 py-10 text-[#1c1917] shadow-[0_28px_60px_rgba(28,25,23,0.08)] sm:px-12">
       <header className="border-b border-[#e7e5e4] pb-8">
         <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#b45309]">
           Common Paper Prototype
@@ -84,16 +88,14 @@ function NdaPreviewPaper({ previewDocument }: { previewDocument: ReturnType<type
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#78716c]">
                 MNDA term
               </p>
-              <p className="mt-2 text-lg font-medium text-[#1c1917]">
-                {previewDocument.ndaTermYears} year(s)
-              </p>
+              <p className="mt-2 text-lg font-medium text-[#1c1917]">{formatTermValue(previewDocument.ndaTermYears)}</p>
             </div>
             <div className="rounded-[1.5rem] border border-[#e7e5e4] p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#78716c]">
                 Confidentiality
               </p>
               <p className="mt-2 text-lg font-medium text-[#1c1917]">
-                {previewDocument.confidentialityTermYears} year(s)
+                {formatTermValue(previewDocument.confidentialityTermYears)}
               </p>
             </div>
           </div>
@@ -476,14 +478,14 @@ export function NdaWorkspace() {
         termTop,
         termCardWidth,
         "MNDA term",
-        `${previewDocument.ndaTermYears} year(s)`,
+        formatTermValue(previewDocument.ndaTermYears),
       ).height;
       const confidentialityHeight = drawInfoCard(
         rightColumnX + termCardWidth + gap,
         termTop,
         termCardWidth,
         "Confidentiality",
-        `${previewDocument.confidentialityTermYears} year(s)`,
+        formatTermValue(previewDocument.confidentialityTermYears),
       ).height;
       y += Math.max(purposeCardHeight, effectiveHeight + gap + Math.max(termHeight, confidentialityHeight)) + 16;
       drawDivider(y);
@@ -640,8 +642,8 @@ export function NdaWorkspace() {
   }
 
   return (
-    <section className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-      <section className="rounded-[2rem] border border-stone-200/80 bg-white/90 p-6 shadow-[0_24px_80px_rgba(120,53,15,0.12)] backdrop-blur">
+    <section className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)]">
+      <section className="flex flex-col rounded-[2rem] border border-stone-200/80 bg-white/90 p-6 shadow-[0_24px_80px_rgba(120,53,15,0.12)] backdrop-blur xl:min-h-[calc(100vh-12rem)]">
         <div className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-700">
             MicroPrelegal
@@ -666,7 +668,7 @@ export function NdaWorkspace() {
           </div>
         </div>
 
-        <div className="rounded-[1.5rem] border border-stone-200 bg-stone-50 p-4">
+        <div className="flex min-h-0 flex-1 flex-col rounded-[1.5rem] border border-stone-200 bg-stone-50 p-4">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-stone-500">
               Drafting conversation
@@ -676,7 +678,7 @@ export function NdaWorkspace() {
             </p>
           </div>
 
-          <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+          <div className="min-h-[20rem] flex-1 space-y-3 overflow-y-auto pr-1 xl:min-h-0">
             {messages.map((message, index) => (
               <article
                 key={`${message.role}-${index}`}
@@ -772,7 +774,7 @@ export function NdaWorkspace() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,_#f7f3ec_0%,_#efe6d8_100%)] shadow-[0_24px_80px_rgba(120,53,15,0.12)]">
+      <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,_#f7f3ec_0%,_#efe6d8_100%)] shadow-[0_24px_80px_rgba(120,53,15,0.12)] xl:min-h-[calc(100vh-12rem)]">
         <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
@@ -786,7 +788,7 @@ export function NdaWorkspace() {
             Paper preview
           </div>
         </div>
-        <div className="max-h-[calc(100vh-5rem)] overflow-y-auto p-6">
+        <div className="min-h-[28rem] flex-1 overflow-y-auto p-6 xl:min-h-0">
           <NdaPreviewPaper previewDocument={previewDocument} />
         </div>
       </section>
